@@ -8,7 +8,7 @@ A single-file Windows desktop tool (`dng_converter.py`, Python + tkinter). For a
 The source photos are Sony RAW+JPEG (`SRX*.ARW`, about 20 MB each).
 
 ## Hard rules (the user asked for these)
-- The app is called **DNG Converter** (`APP_NAME`). The folder picker opens at `F:\nikon\wildlife` (`DEFAULT_BROWSE_DIR`), or at the folder already in the text box if that exists.
+- The app is called **DNG Converter** (`APP_NAME`). The folder picker opens at the `DNG_BROWSE_DIR` env var (default `~\Pictures`, see `DEFAULT_BROWSE_DIR`), or at the folder already in the text box if that exists.
 - Folder layout: JPGs go to the `jpg\` subfolder (lowercase). DNGs sit next to their ARWs. Never put DNGs in a subfolder.
 - Never delete, modify or move the ARW originals.
 - Only process the top level. Don't recurse into subfolders.
@@ -35,14 +35,14 @@ The source photos are Sony RAW+JPEG (`SRX*.ARW`, about 20 MB each).
 ## Running from WSL (dev environment)
 The code lives in WSL (`~/Projects/dng-converter`), but it must run with **Windows** Python so it can call the Windows converter:
 ```
-cd /mnt/c/Users/yon-l
+cd /mnt/c
 python.exe "$(wslpath -w ~/Projects/dng-converter/dng_converter.py)"                 # GUI
 python.exe "$(wslpath -w ~/Projects/dng-converter/dng_converter.py)" --cli 'C:\path'  # headless
 ```
 Run from a `/mnt/c` directory. Windows Python dislikes a UNC current directory.
 
 ## Testing
-- The test data is `F:\nikon\wildlife\Test` (18 ARW + 18 JPG). **Never run the tool on it directly.** Copy it first, e.g. to `C:\Users\yon-l\AppData\Local\Temp\dngtest`, and delete the copy afterwards.
+- The test data is a local folder of Sony RAW+JPEG pairs (18 ARW + 18 JPG). **Never run the tool on it directly.** Copy it first, e.g. to `%TEMP%\dngtest`, and delete the copy afterwards.
 - Use `--cli` for automated checks. Expected result: 18 ok, `jpg\` holds 18 files, the top level holds 18 ARW + 18 dng. A second run should report 18 skipped.
 
 ## Build

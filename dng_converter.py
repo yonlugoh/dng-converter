@@ -14,7 +14,7 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 
 APP_NAME = "DNG Converter"
-DEFAULT_BROWSE_DIR = r"F:\nikon\wildlife"
+DEFAULT_BROWSE_DIR = os.environ.get("DNG_BROWSE_DIR", str(Path.home() / "Pictures"))
 DEFAULT_CONVERTER = r"C:\Program Files\Adobe\Adobe DNG Converter\Adobe DNG Converter.exe"
 JPG_SUBDIR = "jpg"
 TMP_SUBDIR = ".dng_tmp"  # converter writes here first, so a killed run never leaves a partial .dng

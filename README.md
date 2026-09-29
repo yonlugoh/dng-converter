@@ -11,6 +11,7 @@ It shows live progress ("DNG: 50/300 processed · 2.1 files/s · ETA 2m"). The o
 ## Requirements
 - Windows with Python 3.10+ (tkinter is included)
 - [Adobe DNG Converter](https://helpx.adobe.com/camera-raw/using/adobe-dng-converter.html), installed at its default path or set with the `DNG_CONVERTER` environment variable
+- Optional: set `DNG_BROWSE_DIR` to the folder the picker should open at (default: your Pictures folder), e.g. `setx DNG_BROWSE_DIR "D:\Photos"`
 
 ## Usage
 ```
