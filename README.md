@@ -1,4 +1,4 @@
-# DNG Converter (Photo Sorter)
+# DNG Converter
 
 A Windows tool for Sony RAW+JPEG folders:
 
@@ -14,9 +14,9 @@ It shows live progress ("DNG: 50/300 processed · 2.1 files/s · ETA 2m"). The o
 
 ## Usage
 ```
-python photo_sorter.py              # GUI
-python photo_sorter.py --cli DIR    # headless, prints progress
+python dng_converter.py              # GUI
+python dng_converter.py --cli DIR    # headless, prints progress
 ```
 
 ## Build a standalone .exe
-Run `build.bat` from a Windows path. The result is `dist\PhotoSorter.exe`.
+Run `build.bat` from a Windows path. The result is `dist\DNGConverter.exe`.

@@ -1,7 +1,7 @@
-"""Photo Sorter: move JPGs into a jpg\\ subfolder and convert ARW -> DNG in parallel.
+"""DNG Converter: move JPGs into a jpg\\ subfolder and convert ARW -> DNG in parallel.
 
-Run with Windows Python:  python photo_sorter.py            (GUI)
-                          python photo_sorter.py --cli DIR  (headless, for testing)
+Run with Windows Python:  python dng_converter.py            (GUI)
+                          python dng_converter.py --cli DIR  (headless, for testing)
 """
 import os
 import queue
@@ -13,6 +13,8 @@ import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 
+APP_NAME = "DNG Converter"
+DEFAULT_BROWSE_DIR = r"F:\nikon\wildlife"
 DEFAULT_CONVERTER = r"C:\Program Files\Adobe\Adobe DNG Converter\Adobe DNG Converter.exe"
 JPG_SUBDIR = "jpg"
 TMP_SUBDIR = ".dng_tmp"  # converter writes here first, so a killed run never leaves a partial .dng
@@ -151,7 +153,7 @@ def run_gui():
     from tkinter.scrolledtext import ScrolledText
 
     root = tk.Tk()
-    root.title("Photo Sorter – JPG mover & ARW → DNG")
+    root.title(APP_NAME)
     root.geometry("640x460")
     root.minsize(520, 380)
 
@@ -173,7 +175,9 @@ def run_gui():
     ttk.Entry(frm, textvariable=folder_var).grid(row=0, column=1, sticky="ew", padx=6)
 
     def browse():
-        d = filedialog.askdirectory(title="Select photo folder")
+        current = folder_var.get().strip()
+        initial = current if current and Path(current).is_dir() else DEFAULT_BROWSE_DIR
+        d = filedialog.askdirectory(title="Select photo folder", initialdir=initial)
         if d:
             folder_var.set(os.path.normpath(d))
 
@@ -228,10 +232,10 @@ def run_gui():
     def start():
         folder = folder_var.get().strip()
         if not folder or not Path(folder).is_dir():
-            messagebox.showerror("Photo Sorter", "Please select a valid folder.")
+            messagebox.showerror(APP_NAME, "Please select a valid folder.")
             return
         if not state["converter"]:
-            messagebox.showinfo("Photo Sorter", "Adobe DNG Converter not found. Please locate it.")
+            messagebox.showinfo(APP_NAME, "Adobe DNG Converter not found. Please locate it.")
             path = filedialog.askopenfilename(title="Locate Adobe DNG Converter.exe",
                                               filetypes=[("Programs", "*.exe")])
             if not path:
@@ -288,7 +292,7 @@ def run_gui():
 
     def on_close():
         if state["running"]:
-            if not messagebox.askyesno("Photo Sorter", "Conversion is running. Cancel and quit?"):
+            if not messagebox.askyesno(APP_NAME, "Conversion is running. Cancel and quit?"):
                 return
             cancel_event.set()
         root.destroy()

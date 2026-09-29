@@ -1,13 +1,14 @@
 # CLAUDE.md
 
 ## What this is
-A single-file Windows desktop tool (`photo_sorter.py`, Python + tkinter). For a user-selected folder, it:
+A single-file Windows desktop tool (`dng_converter.py`, Python + tkinter). For a user-selected folder, it:
 - moves top-level `.jpg`/`.jpeg` (any case) into `<folder>\jpg\`
 - converts top-level `.ARW` to `.dng` **in the same folder as the ARW**, using Adobe DNG Converter
 
 The source photos are Sony RAW+JPEG (`SRX*.ARW`, about 20 MB each).
 
 ## Hard rules (the user asked for these)
+- The app is called **DNG Converter** (`APP_NAME`). The folder picker opens at `F:\nikon\wildlife` (`DEFAULT_BROWSE_DIR`), or at the folder already in the text box if that exists.
 - Folder layout: JPGs go to the `jpg\` subfolder (lowercase). DNGs sit next to their ARWs. Never put DNGs in a subfolder.
 - Never delete, modify or move the ARW originals.
 - Only process the top level. Don't recurse into subfolders.
@@ -35,8 +36,8 @@ The source photos are Sony RAW+JPEG (`SRX*.ARW`, about 20 MB each).
 The code lives in WSL (`~/Projects/dng-converter`), but it must run with **Windows** Python so it can call the Windows converter:
 ```
 cd /mnt/c/Users/yon-l
-python.exe "$(wslpath -w ~/Projects/dng-converter/photo_sorter.py)"                 # GUI
-python.exe "$(wslpath -w ~/Projects/dng-converter/photo_sorter.py)" --cli 'C:\path'  # headless
+python.exe "$(wslpath -w ~/Projects/dng-converter/dng_converter.py)"                 # GUI
+python.exe "$(wslpath -w ~/Projects/dng-converter/dng_converter.py)" --cli 'C:\path'  # headless
 ```
 Run from a `/mnt/c` directory. Windows Python dislikes a UNC current directory.
 
@@ -45,4 +46,4 @@ Run from a `/mnt/c` directory. Windows Python dislikes a UNC current directory.
 - Use `--cli` for automated checks. Expected result: 18 ok, `jpg\` holds 18 files, the top level holds 18 ARW + 18 dng. A second run should report 18 skipped.
 
 ## Build
-`build.bat` (PyInstaller `--onefile --windowed`) produces `dist\PhotoSorter.exe`. Run it from a Windows path, not `\\wsl$`.
+`build.bat` (PyInstaller `--onefile --windowed`) produces `dist\DNGConverter.exe`. Run it from a Windows path, not `\\wsl$`.
