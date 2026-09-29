@@ -212,19 +212,25 @@ def run_gui():
             moved = move_jpgs(folder, lambda d, t, m: events.put(("jpg", d, t)))
             events.put(("log", f"Moved {moved} JPG(s) to {JPG_SUBDIR}\\"))
             start = time.monotonic()
-            converted = [0]
+            converted, failed = [], []
 
             def on_dng(done, total, name, status):
                 if status == "ok":
-                    converted[0] += 1
-                events.put(("dng", done, total, converted[0], time.monotonic() - start))
-                if status.startswith("failed"):
+                    converted.append(name)
+                    events.put(("log", f"✓ {name}"))
+                elif status.startswith("failed"):
+                    failed.append(name)
                     events.put(("log", f"✗ {name}: {status[8:]}"))
+                events.put(("dng", done, total, len(converted), time.monotonic() - start))
 
             counts = convert_arws(folder, converter, default_workers(), on_dng, cancel_event)
             elapsed = fmt_duration(time.monotonic() - start)
             events.put(("log", f"DNG: {counts['ok']} converted, {counts['skipped']} skipped (already done), "
                                f"{counts['failed']} failed, {counts['cancelled']} cancelled · {elapsed}"))
+            for title, names in (("Converted", converted), ("Failed", failed)):
+                if names:
+                    events.put(("log", f"{title} ({len(names)}):"))
+                    events.put(("log", "".join(f"  {n}\n" for n in sorted(names)).rstrip("\n")))
         except Exception as e:
             events.put(("log", f"Error: {e}"))
         events.put(("finished",))
@@ -312,11 +318,19 @@ def run_cli(folder):
     print(f"Moved {moved} JPG(s)")
     start = time.monotonic()
 
+    results = []
+
     def on_dng(done, total, name, status):
+        results.append((name, status))
         print(f"[{done}/{total}] {name}: {status}", flush=True)
 
     counts = convert_arws(folder, converter, default_workers(), on_dng, threading.Event())
     print(f"{counts} in {fmt_duration(time.monotonic() - start)}")
+    for status in ("ok", "failed"):
+        names = sorted(n for n, s in results if s.split(":")[0] == status)
+        if names:
+            print(f"{'Converted' if status == 'ok' else 'Failed'} ({len(names)}):")
+            print("".join(f"  {n}\n" for n in names), end="")
     sys.exit(1 if counts["failed"] else 0)
 
 
