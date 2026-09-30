@@ -1,0 +1,10 @@
+[project]
+name = "dng-converter"
+version = "0.1.0"
+description = "Move JPGs to a jpg subfolder and convert Sony ARW to DNG in parallel"
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = []
+
+[dependency-groups]
+dev = ["pyinstaller"]
