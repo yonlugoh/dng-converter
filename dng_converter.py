@@ -147,32 +147,127 @@ def fmt_duration(seconds):
 
 # ---------------------------------------------------------------- GUI
 
+# Darkroom palette: graphite surfaces, one amber safelight accent, red only for failures.
+BG, SURFACE, SURFACE_HI, LINE = "#16171a", "#202226", "#2a2c31", "#303238"
+TEXT, MUTED, FAINT = "#ebe8e3", "#a29e97", "#65625c"
+AMBER, AMBER_HI, AMBER_LO, INK = "#f2a93b", "#ffbd5c", "#b98128", "#1c1509"
+RED = "#ef7164"
+
+
+def windows_dpi_aware():
+    """Render crisp on scaled displays instead of letting Windows blur a 96-dpi bitmap."""
+    try:
+        import ctypes
+        ctypes.windll.shcore.SetProcessDpiAwareness(1)
+    except (AttributeError, OSError):
+        pass
+
+
+def windows_dark_title_bar(root):
+    try:
+        import ctypes
+        hwnd = ctypes.windll.user32.GetParent(root.winfo_id())
+        on = ctypes.c_int(1)
+        ctypes.windll.dwmapi.DwmSetWindowAttribute(hwnd, 20, ctypes.byref(on), ctypes.sizeof(on))  # 20 = DWMWA_USE_IMMERSIVE_DARK_MODE
+    except (AttributeError, OSError):
+        pass
+
+
 def run_gui():
     import tkinter as tk
     from tkinter import filedialog, messagebox, ttk
-    from tkinter.scrolledtext import ScrolledText
+    from tkinter import font as tkfont
 
+    windows_dpi_aware()
     root = tk.Tk()
     root.title(APP_NAME)
-    root.geometry("640x460")
-    root.minsize(520, 380)
+    root.configure(bg=BG)
+    scale = root.winfo_fpixels("1i") / 96
+
+    def px(n):
+        return round(n * scale)
+
+    root.geometry(f"{px(640)}x{px(580)}")
+    root.minsize(px(520), px(480))
+
+    families = set(tkfont.families(root))
+
+    def pick(*names):
+        return next((n for n in names if n in families), "TkDefaultFont")
+
+    ui = pick("Segoe UI Variable Text", "Segoe UI")
+    ui_semi = pick("Segoe UI Variable Text Semibold", "Segoe UI Semibold")
+    display_light = pick("Segoe UI Variable Display Light", "Segoe UI Light")
+    display_semi = pick("Segoe UI Variable Display Semib", "Segoe UI Semibold")
+    mono = pick("Cascadia Mono", "Consolas")
+
+    style = ttk.Style(root)
+    style.theme_use("clam")
+    style.configure(".", background=BG, foreground=TEXT, font=(ui, 10), bordercolor=LINE,
+                    lightcolor=SURFACE, darkcolor=SURFACE, troughcolor=BG, focuscolor=BG,
+                    selectbackground=AMBER_LO, selectforeground=INK, insertcolor=AMBER)
+    style.configure("Muted.TLabel", foreground=MUTED, font=(ui, 9))
+    style.configure("Fail.TLabel", foreground=RED, font=(ui_semi, 9))
+    style.configure("Title.TLabel", font=(display_semi, 14))
+    style.configure("Count.TLabel", font=(display_light, 36))
+
+    def button_style(name, bg, fg, hover, pressed, font, focus_ring):
+        states = [("disabled", SURFACE), ("pressed", pressed), ("active", hover)]
+        style.configure(name, background=bg, foreground=fg, bordercolor=bg, lightcolor=bg, darkcolor=bg,
+                        focuscolor=bg, font=font, padding=(px(18), px(7)))
+        style.map(name, background=states, lightcolor=states, darkcolor=states, focuscolor=states,
+                  foreground=[("disabled", FAINT)],
+                  bordercolor=[("disabled", SURFACE), ("focus", focus_ring), ("pressed", pressed), ("active", hover)])
+
+    button_style("TButton", SURFACE, TEXT, SURFACE_HI, LINE, (ui, 10), AMBER)
+    button_style("Accent.TButton", AMBER, INK, AMBER_HI, AMBER_LO, (ui_semi, 10), TEXT)
+
+    style.configure("TEntry", fieldbackground=SURFACE, foreground=TEXT, bordercolor=LINE,
+                    lightcolor=SURFACE, darkcolor=SURFACE, padding=(px(10), px(7)))
+    style.map("TEntry", bordercolor=[("focus", AMBER)], lightcolor=[("focus", SURFACE)])
+
+    style.layout("Vertical.TScrollbar", [("Vertical.Scrollbar.trough", {"sticky": "ns", "children": [
+        ("Vertical.Scrollbar.thumb", {"expand": "1", "sticky": "nswe"})]})])
+    style.configure("Vertical.TScrollbar", background=LINE, troughcolor=BG, bordercolor=BG,
+                    lightcolor=LINE, darkcolor=LINE, arrowsize=px(6), gripcount=0)
+    style.map("Vertical.TScrollbar", background=[("active", FAINT)],
+              lightcolor=[("active", FAINT)], darkcolor=[("active", FAINT)])
 
     events = queue.Queue()
     cancel_event = threading.Event()
-    state = {"running": False, "converter": find_converter()}
+    state = {"running": False, "converter": find_converter(), "dng_seen": False}
 
     folder_var = tk.StringVar()
-    jpg_var = tk.StringVar(value="JPG: –")
-    dng_var = tk.StringVar(value="DNG: –")
-    rate_var = tk.StringVar(value="")
+    converter_var = tk.StringVar()
+    count_var = tk.StringVar(value="Ready")
+    dng_var = tk.StringVar(value="Pick a folder, then Convert")
+    jpg_var = tk.StringVar()
+    rate_var = tk.StringVar()
 
-    frm = ttk.Frame(root, padding=12)
+    frm = ttk.Frame(root, padding=(px(28), px(24), px(28), 0))
     frm.pack(fill="both", expand=True)
-    frm.columnconfigure(1, weight=1)
-    frm.rowconfigure(6, weight=1)
+    frm.columnconfigure(0, weight=1)
+    frm.rowconfigure(7, weight=1)
 
-    ttk.Label(frm, text="Folder:").grid(row=0, column=0, sticky="w")
-    ttk.Entry(frm, textvariable=folder_var).grid(row=0, column=1, sticky="ew", padx=6)
+    header = ttk.Frame(frm)
+    header.grid(row=0, column=0, columnspan=2, sticky="ew")
+    ttk.Label(header, text=APP_NAME, style="Title.TLabel").pack(side="left")
+    converter_label = ttk.Label(header, textvariable=converter_var)
+    converter_label.pack(side="right")
+
+    def show_converter():
+        if state["converter"]:
+            converter_var.set("Adobe DNG Converter ready")
+            converter_label.configure(style="Muted.TLabel")
+        else:
+            converter_var.set("Adobe DNG Converter not found")
+            converter_label.configure(style="Fail.TLabel")
+
+    show_converter()
+
+    ttk.Label(frm, text="Photo folder", style="Muted.TLabel").grid(row=1, column=0, sticky="w", pady=(px(22), px(6)))
+    entry = ttk.Entry(frm, textvariable=folder_var, font=(ui, 10))
+    entry.grid(row=2, column=0, sticky="ew")
 
     def browse():
         current = folder_var.get().strip()
@@ -182,32 +277,84 @@ def run_gui():
             folder_var.set(os.path.normpath(d))
 
     browse_btn = ttk.Button(frm, text="Browse…", command=browse)
-    browse_btn.grid(row=0, column=2)
+    browse_btn.grid(row=2, column=1, sticky="ns", padx=(px(8), 0))
 
-    ttk.Label(frm, textvariable=jpg_var).grid(row=1, column=0, columnspan=3, sticky="w", pady=(12, 0))
-    bar = ttk.Progressbar(frm, mode="determinate")
-    bar.grid(row=2, column=0, columnspan=3, sticky="ew", pady=(8, 2))
-    ttk.Label(frm, textvariable=dng_var).grid(row=3, column=0, columnspan=2, sticky="w")
-    ttk.Label(frm, textvariable=rate_var).grid(row=3, column=2, sticky="e")
+    stats = ttk.Frame(frm)
+    stats.grid(row=3, column=0, columnspan=2, sticky="ew", pady=(px(26), 0))
+    stats.columnconfigure(0, weight=1)
+    ttk.Label(stats, textvariable=count_var, style="Count.TLabel").grid(row=0, column=0, rowspan=2, sticky="w")
+    ttk.Label(stats, textvariable=jpg_var, style="Muted.TLabel").grid(row=0, column=1, sticky="se")
+    ttk.Label(stats, textvariable=rate_var, style="Muted.TLabel").grid(row=1, column=1, sticky="ne")
+    dng_label = ttk.Label(stats, textvariable=dng_var, style="Muted.TLabel")
+    dng_label.grid(row=2, column=0, columnspan=2, sticky="w")
+
+    # Hand-drawn bar so it can ease toward each new value instead of jumping.
+    bar_h = px(4)
+    bar = tk.Canvas(frm, height=bar_h, bg=SURFACE_HI, highlightthickness=0, bd=0)
+    bar.grid(row=4, column=0, columnspan=2, sticky="ew", pady=(px(14), 0))
+    bar_fill = bar.create_rectangle(0, 0, 0, bar_h, fill=AMBER, width=0)
+    prog = {"cur": 0.0, "target": 0.0}
+
+    def draw_bar(_event=None):
+        bar.coords(bar_fill, 0, 0, bar.winfo_width() * prog["cur"], bar_h)
+
+    def animate_bar():
+        gap = prog["target"] - prog["cur"]
+        prog["cur"] = prog["target"] if abs(gap) < 0.002 else prog["cur"] + gap * 0.18  # exponential ease-out
+        draw_bar()
+        if prog["cur"] != prog["target"]:
+            root.after(16, animate_bar)
+
+    def set_progress(fraction):
+        settled = prog["cur"] == prog["target"]
+        prog["target"] = fraction
+        if settled:
+            animate_bar()
+
+    bar.bind("<Configure>", draw_bar)
 
     btns = ttk.Frame(frm)
-    btns.grid(row=4, column=0, columnspan=3, pady=10)
-    start_btn = ttk.Button(btns, text="Start")
+    btns.grid(row=5, column=0, columnspan=2, sticky="w", pady=(px(22), px(22)))
+    start_btn = ttk.Button(btns, text="Convert", style="Accent.TButton")
     cancel_btn = ttk.Button(btns, text="Cancel", state="disabled")
-    start_btn.pack(side="left", padx=4)
-    cancel_btn.pack(side="left", padx=4)
+    start_btn.pack(side="left")
+    cancel_btn.pack(side="left", padx=(px(8), 0))
 
-    ttk.Label(frm, text="Log:").grid(row=5, column=0, sticky="w")
-    log = ScrolledText(frm, height=10, state="disabled", font=("Consolas", 9))
-    log.grid(row=6, column=0, columnspan=3, sticky="nsew")
+    tk.Frame(frm, height=1, bg=LINE).grid(row=6, column=0, columnspan=2, sticky="ew")
+
+    log_frame = ttk.Frame(frm)
+    log_frame.grid(row=7, column=0, columnspan=2, sticky="nsew")
+    log_frame.columnconfigure(0, weight=1)
+    log_frame.rowconfigure(0, weight=1)
+    log = tk.Text(log_frame, height=8, state="disabled", wrap="none", font=(mono, 9),
+                  bg=BG, fg=MUTED, bd=0, highlightthickness=0, padx=0, pady=px(12),
+                  spacing1=px(2), selectbackground=AMBER_LO, selectforeground=INK,
+                  insertwidth=0, cursor="arrow")
+    log.grid(row=0, column=0, sticky="nsew")
+    scroll = ttk.Scrollbar(log_frame, orient="vertical", command=log.yview)
+    scroll.grid(row=0, column=1, sticky="ns", pady=px(12))
+    def on_scroll(first, last):
+        scroll.set(first, last)
+        if float(first) <= 0 and float(last) >= 1:
+            scroll.grid_remove()  # nothing to scroll: hide the empty track
+        else:
+            scroll.grid()
+
+    log.configure(yscrollcommand=on_scroll)
+    log.tag_configure("ok", foreground=TEXT)
+    log.tag_configure("fail", foreground=RED)
+    log.tag_configure("head", foreground=AMBER)
 
     def write_log(text):
+        tag = ("ok" if text.startswith("✓") else "fail" if text.startswith(("✗", "Error", "Failed")) else
+               "head" if text.startswith("──") else "")
         log.configure(state="normal")
-        log.insert("end", text + "\n")
+        log.insert("end", text + "\n", tag)
         log.see("end")
         log.configure(state="disabled")
 
     def worker(folder, converter):
+        counts = None
         try:
             moved = move_jpgs(folder, lambda d, t, m: events.put(("jpg", d, t)))
             events.put(("log", f"Moved {moved} JPG(s) to {JPG_SUBDIR}\\"))
@@ -229,32 +376,43 @@ def run_gui():
                                f"{counts['failed']} failed, {counts['cancelled']} cancelled · {elapsed}"))
             for title, names in (("Converted", converted), ("Failed", failed)):
                 if names:
-                    events.put(("log", f"{title} ({len(names)}):"))
-                    events.put(("log", "".join(f"  {n}\n" for n in sorted(names)).rstrip("\n")))
+                    events.put(("log", f"{title} ({len(names)}):\n" + "\n".join(f"  {n}" for n in sorted(names))))
         except Exception as e:
             events.put(("log", f"Error: {e}"))
-        events.put(("finished",))
+        events.put(("finished", counts))
 
-    def start():
+    def set_running(running):
+        state["running"] = running
+        start_btn.configure(state="disabled" if running else "normal")
+        browse_btn.configure(state="disabled" if running else "normal")
+        cancel_btn.configure(state="normal" if running else "disabled")
+
+    def start(_event=None):
+        if state["running"]:
+            return
         folder = folder_var.get().strip()
         if not folder or not Path(folder).is_dir():
-            messagebox.showerror(APP_NAME, "Please select a valid folder.")
+            messagebox.showerror(APP_NAME, "That folder doesn't exist. Pick a folder of photos with Browse.")
             return
         if not state["converter"]:
-            messagebox.showinfo(APP_NAME, "Adobe DNG Converter not found. Please locate it.")
+            messagebox.showinfo(APP_NAME, "Adobe DNG Converter wasn't found in Program Files. "
+                                          "Point to Adobe DNG Converter.exe to continue.")
             path = filedialog.askopenfilename(title="Locate Adobe DNG Converter.exe",
                                               filetypes=[("Programs", "*.exe")])
             if not path:
                 return
             state["converter"] = path
+            show_converter()
         cancel_event.clear()
-        state["running"] = True
-        start_btn.configure(state="disabled")
-        browse_btn.configure(state="disabled")
-        cancel_btn.configure(state="normal")
-        bar["value"] = 0
-        jpg_var.set("JPG: moving…")
-        dng_var.set("DNG: scanning…")
+        set_running(True)
+        state["dng_seen"] = False
+        prog.update(cur=0.0, target=0.0)
+        bar.itemconfigure(bar_fill, fill=AMBER)
+        draw_bar()
+        count_var.set("0 / 0")
+        dng_label.configure(style="Muted.TLabel")
+        dng_var.set("Scanning for ARW files…")
+        jpg_var.set("Moving JPGs…")
         rate_var.set("")
         write_log(f"── {folder}  ({default_workers()} parallel conversions)")
         threading.Thread(target=worker, args=(folder, state["converter"]), daemon=True).start()
@@ -262,10 +420,31 @@ def run_gui():
     def cancel():
         cancel_event.set()
         cancel_btn.configure(state="disabled")
+        rate_var.set("Cancelling…")
         write_log("Cancelling – finishing conversions already in progress…")
 
     start_btn.configure(command=start)
     cancel_btn.configure(command=cancel)
+    entry.bind("<Return>", start)
+
+    def finish(counts):
+        set_running(False)
+        rate_var.set("")
+        if not counts:  # worker raised before converting
+            dng_label.configure(style="Fail.TLabel")
+            dng_var.set("Stopped by an error. See the log below.")
+            return
+        if not state["dng_seen"]:
+            count_var.set("0")
+            dng_var.set("No ARW files in this folder")
+            return
+        summary = " · ".join(f"{n} {label}" for n, label in (
+            (counts["ok"], "converted"), (counts["skipped"], "already done"), (counts["cancelled"], "cancelled")) if n)
+        if counts["failed"]:
+            dng_label.configure(style="Fail.TLabel")
+            bar.itemconfigure(bar_fill, fill=RED)
+            summary = " · ".join(filter(None, (f"{counts['failed']} failed", summary))) + ". Failed files are listed below."
+        dng_var.set(summary)
 
     def poll():
         try:
@@ -274,24 +453,20 @@ def run_gui():
                 kind = ev[0]
                 if kind == "jpg":
                     _, done, total = ev
-                    jpg_var.set(f"JPG: {done}/{total} moved" if total else "JPG: none to move")
+                    jpg_var.set(f"{done} of {total} JPGs moved to {JPG_SUBDIR}\\" if total else "No JPGs to move")
                 elif kind == "dng":
                     _, done, total, converted, elapsed = ev
-                    bar["maximum"] = max(total, 1)
-                    bar["value"] = done
-                    dng_var.set(f"DNG: {done}/{total} processed")
-                    if converted and elapsed > 0:
+                    state["dng_seen"] = True
+                    set_progress(done / max(total, 1))
+                    count_var.set(f"{done} / {total}")
+                    dng_var.set("DNGs processed")
+                    if converted and elapsed > 0 and done < total:
                         rate = converted / elapsed
-                        remaining = (total - done) / rate if rate else 0
-                        rate_var.set(f"{rate:.1f} files/s · ETA {fmt_duration(remaining)}")
+                        rate_var.set(f"{rate:.1f} files/s · {fmt_duration((total - done) / rate)} left")
                 elif kind == "log":
                     write_log(ev[1])
                 elif kind == "finished":
-                    state["running"] = False
-                    start_btn.configure(state="normal")
-                    browse_btn.configure(state="normal")
-                    cancel_btn.configure(state="disabled")
-                    rate_var.set("Done")
+                    finish(ev[1])
         except queue.Empty:
             pass
         root.after(100, poll)
@@ -304,6 +479,11 @@ def run_gui():
         root.destroy()
 
     root.protocol("WM_DELETE_WINDOW", on_close)
+    root.update_idletasks()
+    windows_dark_title_bar(root)
+    root.withdraw()  # re-show so Windows repaints the title bar dark
+    root.deiconify()
+    entry.focus_set()
     poll()
     root.mainloop()
 
